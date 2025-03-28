@@ -1,45 +1,92 @@
-print("Hello, world! from python")
+"""
+Pydantic model serialization utilities with ormsgpack integration.
 
-import random
-from py03_pydantic_ormsgpack_experiment import Person, new_person, create_nested_person as create_nested_person_rs, create_random_person as create_random_person_rs
-from pydantic import BaseModel
+This module provides utilities for creating serializable wrappers around custom types,
+particularly for use with Pydantic models and ormsgpack serialization.
+"""
+
+from typing import Annotated, Type, TypeVar
+from py03_pydantic_ormsgpack_experiment import (
+    Person,
+    create_nested_person,
+)
+from pydantic import BaseModel, PlainSerializer, PlainValidator
 import ormsgpack
 
-class MyModel(BaseModel):
-    person: Person
 
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {
-            Person: lambda p: p.to_dict()
-        }
+PersonWrapper = Annotated[
+    Person,
+    PlainValidator(Person.validate),
+    PlainSerializer(lambda v: v.to_dict(), return_type=dict),
+]
+"""Type alias for Person with serialization capabilities"""
+
+
+class MySubModel(BaseModel):
+    """
+    A Pydantic model containing a PersonWrapper instance.
+
+    Attributes:
+        person: A Person object with validation and serialization capabilities
+    """
+
+    person: PersonWrapper
+
+
+class MyModel(BaseModel):
+    """
+    The top-level Pydantic model for demonstrating nested serialization.
+
+    Attributes:
+        sub: A MySubModel instance
+    """
+
+    sub: MySubModel
+
 
 def main():
-        # Create a deeply nested person structure
-    #nested_person = create_nested_person(depth=10, max_children=12)
-    nested_person = create_nested_person_rs(depth=7, max_children=12)
-    #print(f"Created nested person with name: {nested_person}")
-    
-    # You can also use it with your model
-    my_model = MyModel(person=nested_person)
-    #print("my_model", my_model)
-    #print("my_model.model_dump()", my_model.model_dump())
-    
-    # Optionally, print some stats about the nested structure
-    def count_descendants(person):
-        if not hasattr(person, "children") or not person.children:
-            return 0
-        count = len(person.children)
-        for child in person.children:
-            count += count_descendants(child)
-        return count
-    
-    total_descendants = count_descendants(nested_person)
-    print(f"Total number of descendants: {total_descendants}")
+    """
+    Demonstrate serialization and deserialization with Pydantic and ormsgpack.
 
-    
-    packed = ormsgpack.packb(my_model.model_dump(), option=ormsgpack.OPT_SERIALIZE_PYDANTIC)
-    print("packed", packed)
+    Creates a nested Person object, wraps it in Pydantic models, then:
+    1. Dumps the model to a dictionary
+    2. Serializes with ormsgpack
+    3. Deserializes back to Python objects
+    4. Reconstructs the original Pydantic model
 
-    unpacked: Person = ormsgpack.unpackb(packed)
-    print("unpacked", unpacked)
+    Prints details about the objects and their types at each step.
+    """
+
+    nested_person: Person = create_nested_person(depth=3, max_children=2)
+
+    nested_person.age = 10
+
+    print(nested_person.to_dict())
+
+    assert isinstance(nested_person, Person)
+
+    my_model = MyModel(sub=MySubModel(person=nested_person))
+
+    dump = my_model.model_dump()
+    print(f"dump={dump}")
+    assert isinstance(dump, dict)
+    assert isinstance(dump["sub"], dict)
+    assert isinstance(dump["sub"]["person"], dict)
+    assert isinstance(dump["sub"]["person"]["children"], list)
+    assert isinstance(dump["sub"]["person"]["children"][0], dict)
+
+    packed = ormsgpack.packb(dump)
+    assert isinstance(packed, bytes)
+
+    unpacked: dict = ormsgpack.unpackb(packed)
+    assert isinstance(unpacked, dict)
+
+    parsed = MyModel(**unpacked)
+    print(f"parsed={parsed}")
+
+    assert parsed == my_model
+
+    assert isinstance(parsed.sub, MySubModel)
+    assert isinstance(parsed.sub.person, Person)
+    assert isinstance(parsed.sub.person.children, list)
+    assert isinstance(parsed.sub.person.children[0], Person)

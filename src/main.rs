@@ -1,9 +1,11 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fmt::Display;
 
 use pyo3::Bound;
 use pyo3::Py;
+use pyo3::PyAny;
 use pyo3::PyResult;
 use pyo3::pyclass;
 use pyo3::pyfunction;
@@ -13,29 +15,40 @@ use pyo3::types::PyDict;
 use pyo3::types::PyModuleMethods;
 use pyo3::{Python, types::PyModule, wrap_pyfunction};
 use rand::Rng;
-use rand::distr::Alphanumeric;
-use rand::distr::SampleString;
 use rand::rng;
 /// Define the Person struct as a Python class.
 #[pyclass(dict, eq, str)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Person {
     /// The person's name.
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub name: String,
     /// The person's age.
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub age: u32,
 
     #[pyo3(get, set)]
     pub children: Vec<Person>,
 }
 
+pub trait Wrapper {
+    fn to_dict_with_py<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyDict>>;
+    fn to_dict(&self) -> PyResult<Py<PyDict>>;
+
+    fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self>
+    where
+        Self: Sized;
+
+    fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self>
+    where
+        Self: Sized;
+}
+
 impl Person {
     fn to_dict_with_py<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("name", self.name.clone())?;
-        dict.set_item("age", self.age.to_string())?;
+        dict.set_item("age", self.age)?;
         dict.set_item(
             "children",
             self.children
@@ -48,6 +61,13 @@ impl Person {
         Ok(dict)
     }
 }
+
+impl From<Person> for Py<PyDict> {
+    fn from(person: Person) -> Self {
+        person.to_dict().unwrap()
+    }
+}
+
 #[pymethods]
 impl Person {
     fn add_child(&mut self, child: Person) {
@@ -58,11 +78,53 @@ impl Person {
         format!("{:?}", self)
     }
 
+    #[getter(__dict__)]
+    fn __dict__(&self) -> PyResult<Py<PyDict>> {
+        self.to_dict()
+    }
+
     fn to_dict(&self) -> PyResult<Py<PyDict>> {
         Python::with_gil(|py| {
             let a = self.to_dict_with_py(py)?.into();
             Ok(a)
         })
+    }
+
+    #[staticmethod]
+    fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let name: String = dict.get_item("name")?.extract()?;
+        let age: u32 = dict.get_item("age")?.extract()?;
+        let children: Vec<Bound<'_, PyDict>> = dict.get_item("children")?.extract()?;
+        let children: Vec<Person> = children
+            .into_iter()
+            .map(|child_dict| Person::from_dict(&child_dict))
+            .collect::<PyResult<Vec<_>>>()?;
+
+        Ok(Person {
+            name,
+            age,
+            children,
+        })
+    }
+
+    #[staticmethod]
+    fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // First check if it's already a Person instance
+        if let Ok(person) = value.extract::<Person>() {
+            return Ok(person);
+        }
+
+        // Then try to convert from a dictionary
+        let value_for_error = format!("{:?}", value);
+        if let Ok(dict) = value.downcast::<PyDict>() {
+            return Person::from_dict(dict);
+        }
+
+        // If neither works, return an error
+        Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Cannot convert {} to Person",
+            value_for_error
+        )))
     }
 }
 

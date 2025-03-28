@@ -1,0 +1,62 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/debian
+{
+	"name": "Debian",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "mcr.microsoft.com/devcontainers/base:bullseye",
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	"features": {
+		"ghcr.io/devcontainers/features/rust:1": {
+			"version": "1.85",
+			"profile": "default"
+		},
+		"ghcr.io/devcontainers/features/python:1": {
+			"version": "3.11.2",
+			"enableShared": true
+		}
+	},
+	// Added for CodeLLDB
+	"runArgs": [
+		"--cap-add=SYS_PTRACE",
+		"--security-opt",
+		"seccomp=unconfined"
+	],
+	"containerEnv": {
+		"LD_LIBRARY_PATH": "/usr/local/python/3.11.2/lib:$LD_LIBRARY_PATH"
+	},
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"fill-labs.dependi",
+				"dustypomerleau.rust-syntax",
+				"vivaxy.vscode-conventional-commits",
+				"codezombiech.gitignore",
+				"yzhang.markdown-all-in-one"
+			],
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "zsh",
+				"terminal.integrated.profiles.linux": {
+					"zsh": {
+						"path": "/bin/zsh"
+					}
+				},
+				"rust-analyzer.cargo.buildScripts.enable": true,
+				"rust-analyzer.check.command": "clippy",
+				"[rust]": {
+					"editor.defaultFormatter": "rust-lang.rust-analyzer",
+					"editor.formatOnSave": true
+				},
+				"[ignore]": {
+					"editor.defaultFormatter": "codezombiech.gitignore",
+					"editor.formatOnSave": true
+				}
+			}
+		}
+	}
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}

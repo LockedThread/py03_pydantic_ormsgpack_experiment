@@ -1,0 +1,9 @@
+[package]
+name = "py03_pydantic_ormsgpack_experiment"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.97"
+pyo3 = { version = "0.24.0", features = ["auto-initialize"] }
+rand = "0.9.0"

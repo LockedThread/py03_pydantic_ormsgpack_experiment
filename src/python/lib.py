@@ -17,7 +17,7 @@ import ormsgpack
 PersonWrapper = Annotated[
     Person,
     PlainValidator(Person.validate),
-    PlainSerializer(lambda v: v.to_dict(), return_type=dict),
+    PlainSerializer(lambda v: v.__dict__, return_type=dict),
 ]
 """Type alias for Person with serialization capabilities"""
 
@@ -61,7 +61,7 @@ def main():
 
     nested_person.age = 10
 
-    print(nested_person.to_dict())
+    print(nested_person.__dict__)
 
     assert isinstance(nested_person, Person)
 

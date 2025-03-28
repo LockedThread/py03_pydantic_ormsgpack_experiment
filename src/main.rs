@@ -1,5 +1,3 @@
-use std::any::Any;
-use std::collections::HashMap;
 use std::ffi::CString;
 use std::fmt::Display;
 
@@ -44,7 +42,7 @@ pub trait Wrapper {
         Self: Sized;
 }
 
-impl Person {
+impl Wrapper for Person {
     fn to_dict_with_py<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("name", self.name.clone())?;
@@ -60,28 +58,6 @@ impl Person {
         //dbg!(&dict);
         Ok(dict)
     }
-}
-
-impl From<Person> for Py<PyDict> {
-    fn from(person: Person) -> Self {
-        person.to_dict().unwrap()
-    }
-}
-
-#[pymethods]
-impl Person {
-    fn add_child(&mut self, child: Person) {
-        self.children.push(child);
-    }
-
-    fn __repr__(&self) -> String {
-        format!("{:?}", self)
-    }
-
-    #[getter(__dict__)]
-    fn __dict__(&self) -> PyResult<Py<PyDict>> {
-        self.to_dict()
-    }
 
     fn to_dict(&self) -> PyResult<Py<PyDict>> {
         Python::with_gil(|py| {
@@ -90,7 +66,6 @@ impl Person {
         })
     }
 
-    #[staticmethod]
     fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {
         let name: String = dict.get_item("name")?.extract()?;
         let age: u32 = dict.get_item("age")?.extract()?;
@@ -107,7 +82,6 @@ impl Person {
         })
     }
 
-    #[staticmethod]
     fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         // First check if it's already a Person instance
         if let Ok(person) = value.extract::<Person>() {
@@ -125,6 +99,39 @@ impl Person {
             "Cannot convert {} to Person",
             value_for_error
         )))
+    }
+}
+
+impl From<Person> for Py<PyDict> {
+    fn from(person: Person) -> Self {
+        person.to_dict().unwrap()
+    }
+}
+
+#[pymethods]
+impl Person {
+    fn add_child(&mut self, child: Person) {
+        self.children.push(child);
+    }
+
+    #[getter(__repr__)]
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+
+    #[getter(__dict__)]
+    fn __dict__(&self) -> PyResult<Py<PyDict>> {
+        Person::to_dict(self)
+    }
+
+    #[staticmethod]
+    pub fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Wrapper::validate(value)
+    }
+
+    #[staticmethod]
+    pub fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {
+        Wrapper::from_dict(dict)
     }
 }
 
@@ -211,8 +218,6 @@ fn main() -> anyhow::Result<()> {
         my_module.add_function(wrap_pyfunction!(create_random_person, &my_module)?)?;
         my_module.add_function(wrap_pyfunction!(create_nested_person, &my_module)?)?;
 
-        dbg!(&my_module);
-
         // Import and get sys.modules
         let sys = PyModule::import(py, "sys")?;
         let py_modules: Bound<'_, PyDict> = sys.getattr("modules")?.downcast_into().unwrap();
@@ -226,8 +231,6 @@ fn main() -> anyhow::Result<()> {
             file_name.as_c_str(),
             module_name.as_c_str(),
         )?;
-
-        dbg!(&py_module);
 
         py_module.getattr("main")?.call0()?;
 

@@ -29,20 +29,37 @@ pub struct Person {
     pub children: Vec<Person>,
 }
 
+/// A trait for converting Rust structs to/from Python dictionaries.
+///
+/// This trait provides the necessary functionality to:
+/// - Convert a Rust struct to a Python dictionary
+/// - Create a Rust struct from a Python dictionary
+/// - Validate and convert arbitrary Python objects to the specific Rust type
 pub trait Wrapper {
+    /// Converts the implementing type to a Python dictionary using a provided Python interpreter.
     fn to_dict_with_py<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyDict>>;
+
+    /// Convenience method to convert the implementing type to a Python dictionary.
+    /// This method acquires the GIL internally.
     fn to_dict(&self) -> PyResult<Py<PyDict>>;
 
+    /// Creates an instance of the implementing type from a Python dictionary.
     fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self>
     where
         Self: Sized;
 
+    /// Validates and converts a Python object to the implementing type.
+    /// This attempts various conversions based on the object type.
     fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self>
     where
         Self: Sized;
 }
 
 impl Wrapper for Person {
+    /// Converts a Person instance to a Python dictionary.
+    ///
+    /// This recursively converts all children to dictionaries as well.
+
     fn to_dict_with_py<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("name", self.name.clone())?;
@@ -59,6 +76,7 @@ impl Wrapper for Person {
         Ok(dict)
     }
 
+    /// Converts a Person to a Python dictionary by acquiring the GIL.
     fn to_dict(&self) -> PyResult<Py<PyDict>> {
         Python::with_gil(|py| {
             let a = self.to_dict_with_py(py)?.into();
@@ -66,6 +84,9 @@ impl Wrapper for Person {
         })
     }
 
+    /// Creates a Person instance from a Python dictionary.
+    ///
+    /// This recursively converts all children dictionaries to Person instances.
     fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {
         let name: String = dict.get_item("name")?.extract()?;
         let age: u32 = dict.get_item("age")?.extract()?;
@@ -82,6 +103,12 @@ impl Wrapper for Person {
         })
     }
 
+    /// Validates and converts a Python object to a Person instance.
+    ///
+    /// This method attempts to convert the input to a Person instance in the following order:
+    /// 1. Direct extraction of a Person instance
+    /// 2. Conversion from a dictionary
+    /// 3. If neither works, it returns an error
     fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         // First check if it's already a Person instance
         if let Ok(person) = value.extract::<Person>() {
@@ -102,33 +129,49 @@ impl Wrapper for Person {
     }
 }
 
-impl From<Person> for Py<PyDict> {
-    fn from(person: Person) -> Self {
-        person.to_dict().unwrap()
-    }
-}
-
 #[pymethods]
 impl Person {
+    /// Adds a child to this person's children.
+    ///
+    /// # Arguments
+    /// * `child` - A Person instance representing a child to add
     fn add_child(&mut self, child: Person) {
         self.children.push(child);
     }
 
+    /// Provides the string representation of this Person for Python.
     #[getter(__repr__)]
     fn __repr__(&self) -> String {
         format!("{:?}", self)
     }
 
+    /// Provides a Python dictionary representation of this Person.
+    ///
+    /// This method returns a dictionary containing all the fields of the Person instance.
     #[getter(__dict__)]
     fn __dict__(&self) -> PyResult<Py<PyDict>> {
         Person::to_dict(self)
     }
 
+    /// Creates a Person from a Python value, validating the input.
+    ///
+    /// # Arguments
+    /// * `value` - Any Python object that might be convertible to a Person
+    ///
+    /// # Returns
+    /// A Result containing either the valid Person or an error
     #[staticmethod]
     pub fn validate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         Wrapper::validate(value)
     }
 
+    /// Creates a Person from a Python dictionary.
+    ///
+    /// # Arguments
+    /// * `dict` - A Python dictionary with the required fields
+    ///
+    /// # Returns
+    /// A Result containing either the created Person or an error
     #[staticmethod]
     pub fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {
         Wrapper::from_dict(dict)
@@ -164,11 +207,17 @@ pub fn create_random_person() -> Person {
     }
 }
 
-/// Create a deeply nested Person structure with random children
+/// Creates a deeply nested Person structure with random children.
+///
+/// This function creates a hierarchy of Person objects with random
+/// attributes and a variable number of children at each level.
 ///
 /// # Arguments
 /// * `depth` - Maximum depth of the person hierarchy
 /// * `max_children` - Maximum number of children at each level
+///
+/// # Returns
+/// A root Person with a nested hierarchy of children
 #[pyfunction]
 pub fn create_nested_person(depth: usize, max_children: usize) -> Person {
     let mut root = create_random_person();
@@ -193,7 +242,17 @@ pub fn create_nested_person(depth: usize, max_children: usize) -> Person {
     root
 }
 
-/// A pyfunction that acts as a constructor for Person.
+/// Creates a new Person with the specified name and age.
+///
+/// This function serves as a constructor for creating Person instances
+/// that can be exposed to Python.
+///
+/// # Arguments
+/// * `name` - The person's name
+/// * `age` - The person's age
+///
+/// # Returns
+/// A new Person instance with the given attributes
 #[pyfunction]
 pub fn new_person(name: String, age: u32) -> Person {
     Person {
@@ -203,6 +262,15 @@ pub fn new_person(name: String, age: u32) -> Person {
     }
 }
 
+/// The main entry point for the application.
+///
+/// This function:
+/// 1. Loads a Python file from the crate's source directory
+/// 2. Creates a Python module and populates it with the Person class and related functions
+/// 3. Executes the main() function from the loaded Python file
+///
+/// # Returns
+/// A Result indicating success or an error
 fn main() -> anyhow::Result<()> {
     let python_file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/python/lib.py");
 
